@@ -11,7 +11,7 @@ author:
      url: https://saqr.me/
 ---
 
-This is the supplementary material for the paper "Exploring Idiographic Learning Analytics in Master's Thesis Writing: A Transition Network Approach" by Ito, H. & Saqr, M. (in press). The work is presented at the International Conference on Smart Learning Environments (ICSLE) 2025.
+This is the supplementary material for the paper "[Exploring Idiographic Learning Analytics in Master's Thesis Writing: A Transition Network Approach](authorversion.pdf)" by Ito, H. & Saqr, M. (in press). The work is presented at the International Conference on Smart Learning Environments (ICSLE) 2025.
 
 ### Download datasets {.unnumbered}
 
