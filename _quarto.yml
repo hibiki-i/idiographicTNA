@@ -1,0 +1,26 @@
+project:
+  type: website
+  output-dir: docs
+  render:
+    - index.qmd
+
+website:
+  navbar: false
+  title: "Idiographic TNA"
+
+format:
+  html:
+    toc: true
+    number-sections: true
+    number-offset: -1
+    code-fold: show
+    code-tools: true
+    embed-resources: true
+
+execute:
+  freeze: auto
+
+resources:
+  - data/ema.csv
+  - data/web.csv
+  - index.qmd

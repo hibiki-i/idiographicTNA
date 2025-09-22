@@ -1,0 +1,629 @@
+---
+title: "Idiographic TNA of Master's Thesis Writing"
+author: 
+   - name: "Hibiki Ito"
+     email: "hibiki.itoo@gmail.com"
+     affiliation: "Kyoto University"
+     url: https://sites.google.com/view/hibiki-ito/home
+   - name: "Mohammed Saqr"
+     email: "mohammed.saqr@uef.fi"
+     affiliation: "University of Eastern Finland"
+     url: https://saqr.me/
+---
+
+This is the supplementary material for the paper "Exploring Idiographic Learning Analytics in Master's Thesis Writing: A Transition Network Approach" by Ito, H. & Saqr, M. (in press). The work is presented at the International Conference on Smart Learning Environments (ICSLE) 2025.
+
+### Download datasets {.unnumbered}
+
+- [ema.csv](data/ema.csv): Ecological momentary assessment (EMA) data.
+- [web.csv](data/web.csv): Web trace data.
+
+### Context of the study {.unnumbered}
+
+Data of a master's degree student (N=1) were collected over the period of approximately six months during their master's thesis work. EMA, a smart watch and a web usage tracking app were used for data collection. Table 1 shows the measured constructs and descriptions in the EMA survey, and Table 2 summarises the collected data. Refer to the paper for more context.
+
+::: {.callout-note collapse="true" title="Table 1. Measured constructs and corresponding descriptions in the EMA survey"}
+| Construct     | Description in the questionnaire                                                                 |
+|---------------|--------------------------------------------------------------------------------------------------|
+| Expectancy    | I believe I can accomplish my learning duties and learning tasks efficiently                      |
+| Value         | I believe I can accomplish my learning duties and learning tasks efficiently                      |
+| Tracking      | I am keeping track of what I need to do or accomplish                                             |
+| Planning      | I know what I have to do to accomplish my learning tasks                                          |
+| Effort        | I am putting enough effort into my learning tasks to accomplish them well                          |
+| Focus         | I am focusing on performing my learning tasks today and resisting distractions                     |
+| Help          | I seek help from teachers, friends or the Internet when I need explanation or help with difficult tasks |
+| Environment   | I am having nice interactions and feeling home within the university community                     |
+| Organising    | I am doing my studies in time and keeping with the tasks/deadlines                                 |
+| Motivation    | I feel enthusiastic/motivated to learn, understand and get better grades                           |
+| Anxiety       | I feel anxious/stressed working on learning tasks, assignments or at work                           |
+| Enjoyment     | I enjoy my tasks and feel happy about my achievements work/accomplishment                          |
+| Feedback      | I am learning from feedback to accomplish my learning                                              |
+| Metacognition | I always assess my performance or work in tasks in order to improve my skills                      |
+:::
+
+::: {.callout-note collapse="true" title="Table 2. Summary of collected data"}
+| Data source  | Description                                           | Data size                                                              |
+|--------------|--------------------------------------------------------|-------------------------------------------------------------------------|
+| EMA         | Questionnaire about learning status (e.g., motivation, self-efficacy) | 342 records over 134 unique days, 14 features                            |
+| Web tracker | Time spent on relevant applications                     | 158 days, 4 features (Overleaf, Notion, Paperpile, ChatGPT)              |
+| Smart watch | Time spent on exercises, step counts, heart rate         | Exercise: 5,518 logs; Steps: 18,230 logs; Heart rate: 81,773 logs         |
+:::
+
+In the following, we go through preprocessing and analyses to reproduce the results in the paper.
+
+------------------------------------------------------------------------
+
+# Data wrangling and preprocessing 
+
+Import libraries:
+```{r}
+#| message: false
+library(tidyverse)     # data manipulation, wrangling and visualisation
+library(skimr)         # data wrangling
+library(corrplot)      # correlation visualisation
+library(dendextend)    # dendrogram visualisation helper
+library(gt)            # displays tables
+library(RColorBrewer)  # for colouring
+library(tsn)           # time series analysis 
+library(tna)           # transition network analysis
+library(cluster)       # Silhouette analysis
+library(fmsb)          # radar charts
+source("src/utils.R")    # helper for detrending (https://github.com/lamethods/advanced-labook-code/blob/main/ch20-var/aux.R)
+```
+
+## EMA data
+
+Summary statistics of EMA data:
+
+```{r}
+ema <- read_csv("data/ema.csv")
+ema_summary <- skim(ema)
+print(ema_summary)
+```
+
+As there are too many variables, we explore correlations between variables from the questionnaire to reduce the number of variables.
+
+```{r}
+questionnaire_vars <- c(
+  "Expectancy", "Value", "Tracking", "Planning", "Effort", "Focus",
+  "Help", "Environment", "Organising", "Motivation",
+  "Anxiety", "Enjoyment", "Feedback", "Metacognition"
+)
+ema_questionnaire <- ema |> select(all_of(questionnaire_vars))
+
+corr_mat <- cor(
+  ema_questionnaire,
+  use   = "pairwise.complete.obs",
+  method = "pearson"
+)
+corrplot(
+  corr_mat,
+  type   = "upper",
+  order  = "hclust",
+  tl.col = "black",
+  tl.srt = 45
+)
+```
+
+Applying hierarchical clustering using correlations as a similarity metric, we identify five clusters which plausibly group similar, correlated constructs.
+
+```{r}
+dist_mat <- as.dist(1 - corr_mat)
+hc <- hclust(dist_mat, method = "ward.D2")
+
+k <- 5
+cols <- brewer.pal(k, "Dark2")
+dend <- as.dendrogram(hc) |>
+  color_branches(k = k, col = cols) |>
+  set("branches_lwd", 3)
+
+labels_colors(dend) <- get_leaves_branches_col(dend)
+plot(
+  dend,
+  ylab = "1 − Pearson r"
+)
+```
+
+We name the identified clusters as follows:
+
+```{r}
+#| echo: false
+#| warning: false
+
+cluster_names <- c("Anxiety", "Attraction", "Commitment", "Regulation", "Support")
+members <- c(
+  "Anxiety",
+  "Value, Motivation, Enjoyment",
+  "Expectancy, Effort, Focus",
+  "Metacognition, Tracking, Planning",
+  "Organising, Feedback, Help, Environment"
+)
+
+tbl <- as_tibble(rbind(cluster_names, members))
+colnames(tbl) <- cluster_names
+
+g <- gt(tbl) |>
+  tab_options(column_labels.hidden = TRUE, table.width = "100%") |>
+  cols_align("left", gt::everything())
+
+for (j in seq_along(colnames(tbl))) {
+  g <- g |>
+    tab_style(
+      style     = list(cell_text(color = cols[j], weight = "bold")),
+      locations = cells_body(columns = all_of(colnames(tbl)[j]), rows = 1)
+    )
+}
+
+g
+```
+
+## Web trace data
+
+Summary statistics of the web trace data:
+
+```{r}
+web <- read_csv("data/web.csv")
+web_summary <- skim(web)
+print(web_summary)
+```
+
+Cumulative time spent on each activity:
+
+```{r}
+#| fig-width: 6
+#| fig-height: 3
+colnames(web) <- c("Date", "ChatGPT", "Writing", "Meta_task", "Reading")
+web_cum <- web |>
+  arrange(Date) |>
+  mutate(
+    Writing_cum = cumsum(Writing) / 60,
+    Total_cum = cumsum(ChatGPT + Writing + Meta_task + Reading) / 60
+  )
+
+web_cum <- web |>
+  arrange(Date) |>
+  mutate(
+    ChatGPT       = cumsum(ChatGPT)       / 60,
+    Writing   = cumsum(Writing)   / 60,
+    Meta_task = cumsum(Meta_task) / 60,
+    Reading   = cumsum(Reading)   / 60
+  )
+
+web_cum_long <- web_cum |>
+  pivot_longer(
+    cols      = -Date,
+    names_to  = "Activity",
+    values_to = "Hours"
+  )
+
+ggplot(web_cum_long, aes(x = Date, y = Hours, fill = Activity)) +
+  geom_area(position = "stack", alpha = 0.8) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title    = "",
+    x        = "Date",
+    y        = "Cumulative Hours",
+    fill     = "Activity"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank()
+  )
+```
+
+# Within-feature TNA
+
+In this section, we aim to answer the following research question:
+
+- **RQ1**: How does each EMA feature change within a day and between days?
+
+First we detrend and standardise the features by the ordinary least squares linear regression following [the tutorial by Saqr et al.](https://lamethods.org/book2/chapters/ch20-var/ch20-var.html)
+
+```{r}
+df <- ema |>
+  mutate(
+    Regulation = (Metacognition + Tracking + Planning) / 3,
+    Attraction = (Value + Motivation + Enjoyment) / 3,
+    Commitment = (Expectancy + Effort + Focus) / 2,
+    Support = (Organising + Help + Feedback + Environment) / 4
+  )
+
+df_detrended <- detrender(df, vars = cluster_names, timevar = "Date") |>
+  select(ends_with("_detrended")) |>
+  rename_with(~ gsub("_detrended$", "", .)) |>
+  scale() |>
+  as.data.frame() |>
+  mutate(Date = df$Date)
+```
+
+Classify data points into three states: low, average and high.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 2
+set.seed(123)
+for (var in cluster_names) {
+  df_tmp <- discretize(
+    df_detrended, n_states = 3, method = "kmeans", value_col = var
+    )
+  
+  state_col <- paste0(var, "_state")
+  centres <- df_tmp |>
+    group_by(!!sym(state_col)) |>
+    summarise(centres = mean(!!sym(var), na.rm=TRUE)) |>
+    arrange(centres)
+  df_tmp[[state_col]] <- factor(
+    df_tmp[[state_col]],
+    levels = centres[[state_col]],
+    labels = c("low", "average", "high")
+  )
+  
+  # Plot the time series
+  p <- plot_series(df_tmp, overlay = "h") + 
+    ggtitle(var) +
+    theme(
+      legend.position = "none",
+    )
+  print(p)
+
+  # Store cluster assignments
+  df_detrended[[state_col]] <- df_tmp[[state_col]]
+}
+```
+
+Visualise transition networks for each feature:
+
+```{r}
+for (var in cluster_names) {
+  action <- paste0(var, "_state")
+  net_data <- prepare_data(df_detrended, action = action, actor = "Date")
+  net <- tna(net_data)
+  plot(
+    net, 
+    vsize       = table(df_detrended[[action]]) * 0.15, 
+    layoutScale = 0.5,
+    title       = var
+  )
+}
+```
+
+# TNA over learning states
+
+In this section, we address the following research question:
+
+- **RQ2**: What are learning states and how do they unfold within a day and between days?
+
+First detrend and standardise all features:
+
+```{r}
+reduced_ema_vars <- c("Anxiety", "Regulation", "Attraction", "Commitment", 
+                      "Support", "Exercise_last_2h", "Stepcount_last_2h", 
+                      "Avg_heartrate_last_2h")
+df_processed <- detrender(df, vars = reduced_ema_vars, timevar = "Date") |>
+  select(ends_with("_detrended")) |>
+  rename_with(~ gsub("_detrended$", "", .)) |>
+  scale() |>
+  as.data.frame()
+```
+
+Show the elbow plot of k-means clustering:
+
+```{r}
+#| fig-width: 4
+#| fig-height: 2.5
+set.seed(123)
+cluster_range <- 1:10
+mean_euc_dist <- numeric(length(cluster_range))
+
+for (k in cluster_range) {
+  km <- kmeans(df_processed, centers = k, nstart = 25)
+  clust <- km$cluster
+  centers <- km$centers
+  dists <- rowSums((df_processed - centers[clust, ])^2)
+  mean_euc_dist[k] <- sum(dists)
+}
+
+elbow_df <- data.frame(
+  Clusters        = cluster_range,
+  MeanEucDistance = mean_euc_dist
+)
+
+ggplot(elbow_df, aes(x = factor(Clusters), y = MeanEucDistance, group = 1)) +
+  geom_line(linewidth = 1, color = "steelblue") +
+  geom_point(size = 3, color = "steelblue") +
+  scale_x_discrete(drop = FALSE) + 
+  labs(title = "Within-Cluster Sum of Squares",
+       x     = "Number of Clusters",
+       y     = "")
+```
+
+According to the above elbow plot, we set $k=3$. Show the radar chart:
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+set.seed(123)
+k <- 3
+km <- kmeans(df_processed, centers = k, nstart = 25)
+df_processed <- df_processed |> mutate(State = km$cluster)
+
+cluster_summary <- df_processed |>
+  group_by(State) |>
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+
+data_for_radar <- cluster_summary |>
+  tibble::column_to_rownames("State")
+
+gmin <- -2; gmax <- 2
+maxmin_df <- data.frame(
+  matrix(
+    c( rep(gmax, ncol(data_for_radar)),
+       rep(gmin, ncol(data_for_radar)) ),
+    nrow    = 2,
+    byrow   = TRUE,
+    dimnames = list(c("max","min"), colnames(data_for_radar))
+  )
+)
+radar_data <- rbind(maxmin_df, data_for_radar)
+
+state_cols <- brewer.pal(k, "Set2")
+fill_cols <- scales::alpha(state_cols, 0.3)
+
+radarchart(
+  radar_data,
+  axistype = 1,
+  seg = 4,
+  caxislabels = c(gmin, -1, 0, 1, gmax),
+  pcol  = state_cols,
+  pfcol = fill_cols,
+  plwd  = 2,
+  plty  = rep(1, k),
+  vlcex = 1,
+  title = ""
+)
+legend(
+  "bottomright",
+  title  = "State",
+  legend = c("Struggling", "Active", "Engaged"),
+  fill   = fill_cols,
+  border = state_cols,
+)
+```
+
+We name the states identified above as <span style="color:`r state_cols[1]`;">Struggling</span>, <span style="color:`r state_cols[2]`;">Active</span> and <span style="color:`r state_cols[3]`;">Engaged</span>.
+It should be noted that the characterisation is very general, and thus their meaning should be understood through the member features. First, the struggling state is strongly characterised by higher scores of anxiety and low scores of positive learning-related features. Second, with the higher physiological indicators, the physically active state would indicate that the student engaged in physical activity before the measurement. Third, the engaged state consistently shows the highest values for positive learning-related features and the lowest anxiety, while physiological features indicate inactivity.
+
+The intra-day transition network is shown below. By setting `actor = "Date"`, each day is considered as an individual unit.
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+df_states <- df_processed |>
+  mutate(
+    State = factor(
+      State,
+      levels = 1:k,
+      labels = c("Struggling", "Active", "Engaged")
+    ),
+    Date = df$Date
+  )
+tna_data <- prepare_data(df_states, action = "State", actor = "Date")
+net <- tna(tna_data)
+
+plot(
+  net, 
+  colors = state_cols, 
+  vsize = table(df_states[["State"]]) * 0.15, 
+  layoutScale = 0.5
+  )
+```
+In contrast, the following is the inter-day transition network.
+
+```{r}
+tna_data <- prepare_data(df_states, action = "State")
+net <- tna(tna_data)
+
+plot(
+  net, 
+  colors = state_cols, 
+  vsize = table(df_states[["State"]]) * 0.15, 
+  layoutScale = 0.5
+  )
+```
+
+
+Visualise the EMA records by the identified states to see how they unfold over time.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+modefun <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+df_states <- df_states |>
+  mutate(Date = df$Date, Hour = hour(df$Time))
+
+grouped <- df_states |>
+  group_by(Date, Hour) |>
+  summarise(State_mode = modefun(State),
+            .groups = "drop")
+
+ggplot(grouped, aes(x = Date, y = Hour, fill = State_mode)) +
+  geom_tile(color = "white") +
+  scale_y_continuous(breaks = 0:23,
+                     labels = sprintf("%02d:00", 0:23)) +
+  scale_fill_manual(values = state_cols, name = "State") +
+  labs(title = "Heatmap of Learning States Over Time",
+       x = "Date", y = "Hour of Day") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+# TNA by daily activity profiles
+
+Finally, the following research question is addressed in this section:
+
+- **RQ3**: How do the learning states unfold within a day and between days according to different daily activity profiles?
+
+We utilise the web trace data to determine daily activity profiles. Below we show the violin plot of the variables.
+
+```{r}
+#| fig-width: 6
+#| fig-height: 3
+web_vars <- c("Reading", "Meta_task", "ChatGPT", "Writing")
+web_long <- web |>
+  pivot_longer(cols = all_of(web_vars),
+               names_to = "App",
+               values_to = "Time")
+ggplot(web_long, aes(x = App, y = Time)) +
+  geom_violin(fill = "aquamarine3", trim = TRUE) +
+  geom_boxplot(
+    width          = 0.10,
+    outlier.shape  = 16,
+    outlier.size   = 2,
+    outlier.colour = "orangered",
+    fill           = "white",
+    alpha          = 0.6
+  ) +
+  scale_y_continuous(
+    trans  = scales::pseudo_log_trans(base = 10),
+    breaks = c(0, 1, 10, 100, 500),
+    labels = scales::comma_format()
+  ) +
+  annotation_logticks(sides = "l", short = unit(0.1, "cm")) +
+  labs(title = "Time Spent on Each App per Day", x = "", y = "Minutes")
+```
+
+The above plot indicates that it is plausible to log-normalise the variables and then standardise.
+
+```{r}
+web_processed <- web |>
+  mutate(across(all_of(web_vars), log1p)) |>
+  scale() |>
+  as.data.frame()
+```
+
+Apply hierarchical clustering on the processed data:
+
+```{r}
+k = 3
+d <- dist(web_processed, method = "euclidean")
+hc <- hclust(d, method = "ward.D2")
+profile_cols <- brewer.pal(k, "Set1")
+dend <- as.dendrogram(hc) |>
+  color_branches(k = k, col = profile_cols) |>
+  set("branches_lwd", 2)
+plot(dend, leaflab = "none", main = "Daily Activity Profiles")
+```
+
+Based on the above dendrogram, we set $k=3$. To characterise the identified daily activity profiles, show the radar charts:
+
+```{r}
+#| fig-width: 5
+#| fig-height: 5
+k = 3
+web_processed$Profile <- cutree(hc, k = k)
+
+profile_means <- web_processed |>
+  group_by(Profile) |>
+  summarise(across(all_of(web_vars), \(x) mean(x, na.rm = TRUE)), .groups="drop")
+
+gmin <- -2; gmax <- 1
+scale_df <- data.frame(rbind(
+  max = rep(gmax, length(web_vars)),
+  min = rep(gmin, length(web_vars))
+))
+colnames(scale_df) <- web_vars
+
+profiles <- c("Preparing", "Input", "Output")
+for(i in 1:k) {
+  df_plot <- bind_rows(
+    scale_df,
+    profile_means |> filter(Profile == i) |> select(all_of(web_vars))
+  )
+  rownames(df_plot)[3] <- paste0(profiles[i], " (n=", 
+                                  sum(web_processed$Profile==i), ")")
+  radarchart(
+    df_plot,
+    axistype    = 1,
+    seg         = gmax - gmin,
+    caxislabels = seq(gmin, gmax, by = 1),
+    pcol        = profile_cols[i],
+    pfcol       = alpha(profile_cols[i], 0.4),
+    plwd        = 2,
+    cglcol      = "grey",
+    cglty       = 1,
+    axislabcol  = "grey",
+    vlcex       = 1,
+    centerzero  = TRUE,
+    title       = paste0(profiles[i], " (n=", 
+                                  sum(web_processed$Profile==i), ")")
+  )
+}
+```
+
+Also illustrate how daily profiles unfold over time:
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+web_processed$Date <- web$Date
+ggplot(web_processed, aes(x = Date, y = as.factor(Profile), group = 1, color = as.factor(Profile))) +
+  geom_step(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_discrete(
+    name   = "Profile",
+    breaks = c("1","2","3"),
+    labels = profiles
+  ) +
+  scale_color_brewer(
+    palette = "Set1",
+    name    = "Profile",
+    labels  = profiles
+  ) +
+  labs(
+    title = "Daily Activity Profiles Over Time",
+    x     = "Date"
+  ) +
+  theme_minimal()
+```
+
+Now we perform TNA by daily activity profiles. First, the intra-day networks are shown below:
+
+```{r}
+profile_map <- web_processed |> select(all_of(c("Date", "Profile")))
+df <- left_join(df_states, profile_map, by = "Date")
+for (i in 1:k) {
+  df_tmp <- df |> filter(Profile == i)
+  tna_data <- prepare_data(df_tmp, action = "State", actor = "Date")
+  net <- tna(tna_data)
+  plot(
+    net,
+    colors = state_cols,
+    vsize  = 50 * table(df_tmp[["State"]]) / nrow(df_tmp),
+    layoutScale = 0.5,
+    title = profiles[i]
+  )
+}
+```
+
+Then, show the inter-day transition networks:
+```{r}
+profile_map <- web_processed |> select(all_of(c("Date", "Profile")))
+df <- left_join(df_states, profile_map, by = "Date")
+for (i in 1:k) {
+  df_tmp <- df |> filter(Profile == i)
+  tna_data <- prepare_data(df_tmp, action = "State")
+  net <- tna(tna_data)
+  plot(
+    net,
+    colors = state_cols,
+    vsize  = 50 * table(df_tmp[["State"]]) / nrow(df_tmp),
+    layoutScale = 0.5,
+    title = profiles[i]
+  )
+}
+```
