@@ -24,4 +24,3 @@ resources:
   - data/ema.csv
   - data/web.csv
   - index.qmd
-  - authorversion.pdf

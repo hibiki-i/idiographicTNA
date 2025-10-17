@@ -5,13 +5,9 @@ author:
      email: "hibiki.itoo@gmail.com"
      affiliation: "Kyoto University"
      url: https://sites.google.com/view/hibiki-ito/home
-   - name: "Mohammed Saqr"
-     email: "mohammed.saqr@uef.fi"
-     affiliation: "University of Eastern Finland"
-     url: https://saqr.me/
 ---
 
-This is the supplementary material for the paper "[Exploring Idiographic Learning Analytics in Master's Thesis Writing: A Transition Network Approach](authorversion.pdf)" by Ito, H. & Saqr, M. (in press). The work is presented at the International Conference on Smart Learning Environments (ICSLE) 2025.
+This is the supplementary material for the paper "[Exploring Idiographic Learning Analytics in Master's Thesis Writing: A Transition Network Approach](https://researchmap.jp/hibiki.ito/published_papers/51232846?lang=en)" by Ito, H. (in press). The work is presented at the International Conference on Smart Learning Environments (ICSLE) 2025.
 
 ### Download datasets {.unnumbered}
 
